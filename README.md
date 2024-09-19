@@ -1,6 +1,6 @@
-# nginx-upstream-dynamic-resolve-servers
+# nginx-http-upstream-dynamic-servers
 
-[English](./README.md)  |  [中文](./README.cn.md)  
+[English](./README.md)  |  [中文](./README.cn.md)
 An nginx module to resolve domain names inside upstreams and keep them up to date.
 
 By default, servers defined in nginx upstreams are only resolved when nginx starts. This module provides an additional `resolve` parameter for `server` definitions that can be used to asynchronously resolve upstream domain names. This keeps the upstream definition up to date according to the DNS TTL of each domain names. This can be useful if you want to use upstreams for dynamic types of domain names that may frequently change IP addresses. And there is another additional `use_last` parameter that can be used to make nginx to use the last result when DNS resolve timeout.
@@ -22,20 +22,20 @@ patch -d ./ -p1 < ./nginx-upstream-dynamic-servers-1.22.0.patch
 ```
 
 ### configure and make
+
 ```sh
 ./configure --add-module=/path/to/nginx-http-upstream-dynamic-servers
 make && make install
 ```
 
-
 ## Usage
 
 Use the `server` definition inside your upstreams and specify the `resolve` parameter.
 
-*Note:* 
+*Note:*
 
-1. A `resolver` must be defined at the `http` level of nginx's config for `resolve` to work.  
-2. The `use_last` parameter must behind `resolve` parameter.  
+1. A `resolver` must be defined at the `http` level of nginx's config for `resolve` to work.
+2. The `use_last` parameter must behind `resolve` parameter.
 3. For one domain, if you don't add `resolve` parameter in the `server` directive, the domain will just do nginx native process -- resolve just once and nginx will not start if the domain can't be resolved.
 
 ```

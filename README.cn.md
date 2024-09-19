@@ -1,4 +1,4 @@
-# nginx-upstream-dynamic-resolve-servers
+# nginx-http-upstream-dynamic-servers
 
 [English](./README.md)  |  [中文](./README.cn.md)
 
