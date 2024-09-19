@@ -1,0 +1,132 @@
+diff -Naur nginx-1.22.0/src/event/ngx_event_connect.h nginx-1.22.0_new/src/event/ngx_event_connect.h
+--- nginx-1.22.0/src/event/ngx_event_connect.h	2022-05-24 07:59:19.000000000 +0800
++++ nginx-1.22.0_new/src/event/ngx_event_connect.h	2024-09-13 18:04:38.633298646 +0800
+@@ -39,6 +39,7 @@
+     struct sockaddr                 *sockaddr;
+     socklen_t                        socklen;
+     ngx_str_t                       *name;
++    ngx_str_t                       *host;
+ 
+     ngx_uint_t                       tries;
+     ngx_msec_t                       start_time;
+diff -Naur nginx-1.22.0/src/http/modules/ngx_http_upstream_hash_module.c nginx-1.22.0_new/src/http/modules/ngx_http_upstream_hash_module.c
+--- nginx-1.22.0/src/http/modules/ngx_http_upstream_hash_module.c	2022-05-24 07:59:19.000000000 +0800
++++ nginx-1.22.0_new/src/http/modules/ngx_http_upstream_hash_module.c	2024-09-13 18:05:29.793290410 +0800
+@@ -601,7 +601,7 @@
+     pc->sockaddr = best->sockaddr;
+     pc->socklen = best->socklen;
+     pc->name = &best->name;
+-
++    pc->host = &peer->host;
+     best->conns++;
+ 
+     if (now - best->checked > best->fail_timeout) {
+diff -Naur nginx-1.22.0/src/http/modules/ngx_http_upstream_ip_hash_module.c nginx-1.22.0_new/src/http/modules/ngx_http_upstream_ip_hash_module.c
+--- nginx-1.22.0/src/http/modules/ngx_http_upstream_ip_hash_module.c	2022-05-24 07:59:19.000000000 +0800
++++ nginx-1.22.0_new/src/http/modules/ngx_http_upstream_ip_hash_module.c	2024-09-13 18:05:33.613289855 +0800
+@@ -236,7 +236,7 @@
+     pc->sockaddr = peer->sockaddr;
+     pc->socklen = peer->socklen;
+     pc->name = &peer->name;
+-
++    pc->host = &peer->host;
+     peer->conns++;
+ 
+     if (now - peer->checked > peer->fail_timeout) {
+diff -Naur nginx-1.22.0/src/http/modules/ngx_http_upstream_least_conn_module.c nginx-1.22.0_new/src/http/modules/ngx_http_upstream_least_conn_module.c
+--- nginx-1.22.0/src/http/modules/ngx_http_upstream_least_conn_module.c	2022-05-24 07:59:19.000000000 +0800
++++ nginx-1.22.0_new/src/http/modules/ngx_http_upstream_least_conn_module.c	2024-09-13 18:05:39.183289043 +0800
+@@ -240,7 +240,7 @@
+     pc->sockaddr = best->sockaddr;
+     pc->socklen = best->socklen;
+     pc->name = &best->name;
+-
++    pc->host = &peer->host;
+     best->conns++;
+ 
+     rrp->current = best;
+diff -Naur nginx-1.22.0/src/http/ngx_http_upstream.c nginx-1.22.0_new/src/http/ngx_http_upstream.c
+--- nginx-1.22.0/src/http/ngx_http_upstream.c	2022-05-24 07:59:19.000000000 +0800
++++ nginx-1.22.0_new/src/http/ngx_http_upstream.c	2024-09-13 18:03:08.543311639 +0800
+@@ -191,6 +191,8 @@
+     ngx_http_upstream_t *u, ngx_connection_t *c);
+ #endif
+ 
++extern ngx_int_t ngx_http_upstream_dynamic_directive(ngx_conf_t *cf,         /* add */
++ngx_http_upstream_server_t *us, ngx_uint_t *i);                                      /* add */
+ 
+ static ngx_http_upstream_header_t  ngx_http_upstream_headers_in[] = {
+ 
+@@ -5981,6 +5981,13 @@
+     fail_timeout = 10;
+ 
+     for (i = 2; i < cf->args->nelts; i++) {
++        
++        ngx_int_t res = ngx_http_upstream_dynamic_directive(cf, us, &i);  /* add */
++        if (res == NGX_ERROR) {                                                   /* add */
++            goto invalid;                                                         /* add */
++        } else if (res == NGX_AGAIN) {                                            /* add */
++            continue;                                                             /* add */
++        }                                                                         /* add */
+ 
+         if (ngx_strncmp(value[i].data, "weight=", 7) == 0) {
+ 
+diff -Naur nginx-1.22.0/src/http/ngx_http_upstream.h nginx-1.22.0_new/src/http/ngx_http_upstream.h
+--- nginx-1.22.0/src/http/ngx_http_upstream.h	2022-05-24 07:59:19.000000000 +0800
++++ nginx-1.22.0_new/src/http/ngx_http_upstream.h	2024-09-13 18:05:25.013291094 +0800
+@@ -101,7 +101,7 @@
+     time_t                           fail_timeout;
+     ngx_msec_t                       slow_start;
+     ngx_uint_t                       down;
+-
++    ngx_str_t                        host;
+     unsigned                         backup:1;
+ 
+     NGX_COMPAT_BEGIN(6)
+diff -Naur nginx-1.22.0/src/http/ngx_http_upstream_round_robin.c nginx-1.22.0_new/src/http/ngx_http_upstream_round_robin.c
+--- nginx-1.22.0/src/http/ngx_http_upstream_round_robin.c	2022-05-24 07:59:19.000000000 +0800
++++ nginx-1.22.0_new/src/http/ngx_http_upstream_round_robin.c	2024-09-13 18:05:10.823293992 +0800
+@@ -103,6 +103,7 @@
+                 peer[n].fail_timeout = server[i].fail_timeout;
+                 peer[n].down = server[i].down;
+                 peer[n].server = server[i].name;
++                peer[n].host = server[i].host;
+ 
+                 *peerp = &peer[n];
+                 peerp = &peer[n].next;
+@@ -173,6 +174,7 @@
+                 peer[n].fail_timeout = server[i].fail_timeout;
+                 peer[n].down = server[i].down;
+                 peer[n].server = server[i].name;
++                peer[n].host = server[i].host;
+ 
+                 *peerp = &peer[n];
+                 peerp = &peer[n].next;
+@@ -243,6 +245,7 @@
+         peer[i].fail_timeout = 10;
+         *peerp = &peer[i];
+         peerp = &peer[i].next;
++        peer[i].host = u.host;   
+     }
+ 
+     us->peer.data = peers;
+@@ -477,7 +480,7 @@
+     pc->sockaddr = peer->sockaddr;
+     pc->socklen = peer->socklen;
+     pc->name = &peer->name;
+-
++    pc->host = &peer->host;
+     peer->conns++;
+ 
+     ngx_http_upstream_rr_peers_unlock(peers);
+diff -Naur nginx-1.22.0/src/http/ngx_http_upstream_round_robin.h nginx-1.22.0_new/src/http/ngx_http_upstream_round_robin.h
+--- nginx-1.22.0/src/http/ngx_http_upstream_round_robin.h	2022-05-24 07:59:19.000000000 +0800
++++ nginx-1.22.0_new/src/http/ngx_http_upstream_round_robin.h	2024-09-13 18:05:18.843292323 +0800
+@@ -21,6 +21,7 @@
+     socklen_t                       socklen;
+     ngx_str_t                       name;
+     ngx_str_t                       server;
++    ngx_str_t                       host;
+ 
+     ngx_int_t                       current_weight;
+     ngx_int_t                       effective_weight;
