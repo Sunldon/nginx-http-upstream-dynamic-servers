@@ -2,6 +2,8 @@
 
 [English](./README.md)  |  [中文](./README.cn.md)
 
+
+
 一个可以在upstream块里动态解析域名的nginx模块
 
 默认情况下，nginx只会在启动的时候解析一次upstream块里配置的域名。这个模块为 `server`指令提供了 `resolve`参数，可以异步解析upstream域名。如果你的upstream服务器的ip经常变动的化这个功能是非常有用的。另外，还提供了另外一个参数 `use_last`，使用这个参数可以让nginx在dns解析超时的时候使用上一次的结果。
@@ -14,7 +16,7 @@
 
  [English Design Doc](./doc/nginx_dynamic_server_EN.md)
 
-## 安装
+# 安装
 
 应用patch
 
@@ -22,14 +24,14 @@
 patch -d ./ -p1 < ./nginx-upstream-dynamic-servers-1.22.0.patch
 ```
 
-### 编译
+## 编译
 
 ```sh
 ./configure --add-module=/path/to/nginx-http-upstream-dynamic-servers
 make && make install
 ```
 
-## 使用
+# 使用
 
 在upstream里面的 `server`指令的后面加上 `resolve`参数，`use_last`参数为可选
 
@@ -44,20 +46,60 @@ http {
   resolver 8.8.8.8;
 
   upstream example {
-    server example.com resolve [use_last] ...;
-    server test.com resolve [use_last] ...;
+    server example.com:443 resolve [use_last] ...;
+    server test.com:9999 resolve [use_last] ...;
   }
 }
 ```
+
+# 注意
+
+因为考虑实际使用时，不会发生这种情况，因此不允许一个域名的server（如 server test.com:9999）出现多次（在同一个upstream或者多个stream中）。
+
+以下这两种情况不允许出现:
+
+```nginx
+upstream a {
+    server example.com:443 resolve;
+    server example.com:443 resolve ;    
+}
+```
+
+```nginx
+upstream a {
+    server example.com:443 resolve;
+    server test.com:443 resolve ;    
+}
+
+upstream b {
+    server example.com:443 resolve; 
+}
+```
+
+代码是在ngx_http_upstream_dynamic_directive：
+
+```c
+        if (NULL == node) {
+			......
+        } else {
+            ngx_conf_log_error(NGX_LOG_ERR, cf, 0,
+                "The server '%V' should not be used more than once in all "
+                "upstream block",
+                &dynamic_server->server->host);
+            return NGX_ERROR;
+        }
+```
+
+如果确实需要，则需要对udsmcf->rbtree的key数据做修改，如采用dynamic_server->host，并加上upstream的名字（需要额外分配内存给dynamic_server->host）
 
 # 兼容性
 
 nginx 1.22
 
-## 搭配选择
+# 搭配选择
 
 后端的健康模块使用的是：https://github.com/alexzzh/ngx_health_detect_module
 
-## 许可协议
+# 许可协议
 
 nginx-http-upstream-dynamic-servers 开源并使用 MIT 许可协议
